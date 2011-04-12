@@ -1,0 +1,16 @@
+Package: fabric
+Version: 1.1a-2
+Architecture: all
+Maintainer: Vladimir Lazarenko <vladimir@vlfn.nl>
+Installed-Size: 308
+Depends: python (>= 2.5), python-support (>= 0.7.1), python-paramiko (>= 1.6), python-pkg-resources
+Section: net
+Priority: optional
+Homepage: http://fabfile.org/
+Description: Simple Pythonic remote deployment tool
+ Fabric is designed to upload files and run shell commands on a number of
+ servers in parallel or serially. These commands are grouped in tasks (which
+ are regular Python functions) and specified in a 'fabfile.'
+ .
+ It is similar to Capistrano, except it's implemented in Python and doesn't
+ expect you to be deploying Rails applications.
