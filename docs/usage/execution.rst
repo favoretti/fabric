@@ -12,21 +12,15 @@ a scenario requires specific rules for when and how tasks are executed.
 This document explores Fabric's execution model, including the main execution
 loop, how to define host lists, how connections are made, and so forth.
 
-.. note::
-
-    Most of this material applies to the :doc:`fab <fab>` tool only, as this
-    mode of use has historically been the main focus of Fabric's development.
-    When writing version 0.9 we straightened out Fabric's internals to make it
-    easier to use as a library, but there's still work to be done before this
-    is as flexible and easy as we'd like it to be.
 
 .. _execution-strategy:
 
 Execution strategy
 ==================
 
-Fabric currently provides a single, serial execution method, though more
-options are planned for the future:
+Fabric defaults to a single, serial execution method, though there is an
+alternative parallel mode available as of Fabric 1.3 (see
+:doc:`/usage/parallel`). This default behavior is as follows:
 
 * A list of tasks is created. Currently this list is simply the arguments given
   to :doc:`fab <fab>`, preserving the order given.
@@ -67,74 +61,10 @@ you may introspect the output or return code of a given command and decide what
 to do next.
 
 
-.. _tasks-and-imports:
-
 Defining tasks
 ==============
 
-When looking for tasks to execute, Fabric imports your fabfile and will
-consider any callable object, **except** for the following:
-
-* Callables whose name starts with an underscore (``_``). In other words,
-  Python's usual "private" convention holds true here.
-* Callables defined within Fabric itself. Fabric's own functions such as
-  `~fabric.operations.run` and `~fabric.operations.sudo`  will not show up in
-  your task list.
-
-.. note::
-
-    To see exactly which callables in your fabfile may be executed via ``fab``,
-    use :option:`fab --list <-l>`.
-
-Imports
--------
-
-Python's ``import`` statement effectively includes the imported objects in your
-module's namespace. Since Fabric's fabfiles are just Python modules, this means
-that imports are also considered as possible tasks, alongside anything defined
-in the fabfile itself.
-
-Because of this, we strongly recommend that you use the ``import module`` form
-of importing, followed by ``module.callable()``, which will result in a cleaner
-fabfile API than doing ``from module import callable``.
-
-For example, here's a sample fabfile which uses ``urllib.urlopen`` to get some
-data out of a webservice::
-
-    from urllib import urlopen
-
-    from fabric.api import run
-
-    def webservice_read():
-        objects = urlopen('http://my/web/service/?foo=bar').read().split()
-        print(objects)
-
-This looks simple enough, and will run without error. However, look what
-happens if we run :option:`fab --list <-l>` on this fabfile::
-
-    $ fab --list
-    Available commands:
-
-      webservice_read   List some directories.   
-      urlopen           urlopen(url [, data]) -> open file-like object
-
-Our fabfile of only one task is showing two "tasks", which is bad enough, and
-an unsuspecting user might accidentally try to call ``fab urlopen``, which
-probably won't work very well. Imagine any real-world fabfile, which is likely
-to be much more complex, and hopefully you can see how this could get messy
-fast.
-
-For reference, here's the recommended way to do it::
-
-    import urllib
-
-    from fabric.api import run
-
-    def webservice_read():
-        objects = urllib.urlopen('http://my/web/service/?foo=bar').read().split()
-        print(objects)
-
-It's a simple change, but it'll make anyone using your fabfile a bit happier.
+For details on what constitutes a Fabric task and how to organize them, please see :doc:`/usage/tasks`.
 
 
 Defining host lists
@@ -268,8 +198,7 @@ Globally, via the command line
 In addition to modifying ``env.hosts``, ``env.roles``, and
 ``env.exclude_hosts`` at the module level, you may define them by passing
 comma-separated string arguments to the command-line switches
-:option:`--hosts/-H <-H>`, :option:`--roles/-R <-R>`, and
-:option:`--exclude-hosts/-x <-x>`, e.g.::
+:option:`--hosts/-H <-H>` and :option:`--roles/-R <-R>`, e.g.::
 
     $ fab -H host1,host2 mytask
 
@@ -299,12 +228,8 @@ instead::
         run('ls /var/www')
 
 When this fabfile is run as ``fab -H host1,host2 mytask``, ``env.hosts`` will
-end contain ``['host1', 'host2', 'host3', 'host4']`` at the time that
+then contain ``['host1', 'host2', 'host3', 'host4']`` at the time that
 ``mytask`` is executed.
-
-For exclusions when this fabfile is run as ``fab -H host1,host2 -x host1
-mytask``, ``env.hosts`` will be the same, but the host list that gets executed
-will not have host1 included in it.
 
 .. note::
 
@@ -349,11 +274,6 @@ To specify per-task hosts for ``mytask``, execute it like so::
 This will override any other host list and ensure ``mytask`` always runs on
 just those two hosts.
 
-You are also able to exclude hosts like this::
-
-    $ fab mytask:hosts="host1;host2",exclude_hosts="host1"
-
-
 Per-task, via decorators
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -383,7 +303,6 @@ on a host list of ``['host1', 'host2']``.
 
 However, decorator host lists do **not** override per-task command-line
 arguments, as given in the previous section.
-
 
 Order of precedence
 ~~~~~~~~~~~~~~~~~~~
@@ -434,6 +353,134 @@ Assuming no command-line hosts or roles are given when ``mytask`` is executed,
 this fabfile will call ``mytask`` on a host list of ``['a', 'b', 'c']`` -- the
 union of ``role1`` and the contents of the `~fabric.decorators.hosts` call.
 
+.. _excluding-hosts:
+
+Excluding specific hosts
+------------------------
+
+At times, it is useful to exclude one or more specific hosts, e.g. to override
+a few bad or otherwise undesirable hosts which are pulled in from a role or an
+autogenerated host list. This may be accomplished globally with
+:option:`--exclude-hosts/-x <-x>`::
+
+    $ fab -R myrole -x host2,host5 mytask
+
+If ``myrole`` was defined as ``['host1', 'host2', ..., 'host15']``, the above
+invocation would run with an effective host list of ``['host1', 'host3',
+'host4', 'host6', ..., 'host15']``.
+
+    .. note::
+        Using this option does not modify ``env.hosts`` -- it only causes the
+        main execution loop to skip the requested hosts.
+
+Exclusions may be specified per-task by using an extra ``exclude_hosts`` kwarg,
+which is implemented similarly to the abovementioned ``hosts`` and ``roles``
+per-task kwargs, in that it is stripped from the actual task invocation. This
+example would have the same result as the global exclude above::
+
+    $ fab mytask:roles=myrole,exclude_hosts="host2;host5"
+
+Note that the host list is semicolon-separated, just as with the ``hosts``
+per-task argument.
+
+Combining exclusions
+~~~~~~~~~~~~~~~~~~~~
+
+Host exclusion lists, like host lists themselves, are not merged together
+across the different "levels" they can be declared in. For example, a global
+``-x`` option will not affect a per-task host list set with a decorator or
+keyword argument, nor will per-task ``exclude_hosts`` keyword arguments affect
+a global ``-H`` list.
+
+There is one minor exception to this rule, namely that CLI-level keyword
+arguments (``mytask:exclude_hosts=x,y``) **will** be taken into account when
+examining host lists set via ``@hosts`` or ``@roles``. Thus a task function
+decorated with ``@hosts('host1', 'host2')`` executed as ``fab
+taskname:exclude_hosts=host2`` will only run on ``host1``.
+
+As with the host list merging, this functionality is currently limited (partly
+to keep the implementation simple) and may be expanded in future releases.
+
+
+.. _execute:
+
+Intelligently executing tasks with ``execute``
+==============================================
+
+.. versionadded:: 1.3
+
+Most of the information here involves "top level" tasks executed via :doc:`fab
+<fab>`, such as the first example where we called ``fab taskA taskB``.
+However, it's often convenient to wrap up multi-task invocations like this into
+their own, "meta" tasks.
+
+Prior to Fabric 1.3, this had to be done by hand, as outlined in
+:doc:`/usage/library`. Fabric's design eschews magical behavior, so simply
+*calling* a task function does **not** take into account decorators such as
+`~fabric.decorators.roles`.
+
+New in Fabric 1.3 is the `~fabric.tasks.execute` helper function, which takes a
+task object or name as its first argument. Using it is effectively the same as
+calling the given task from the command line: all the rules given above in
+:ref:`host-lists` apply. (The ``hosts`` and ``roles`` keyword arguments to
+`~fabric.tasks.execute` are analogous to :ref:`CLI per-task arguments
+<hosts-per-task-cli>`, including how they override all other host/role-setting
+methods.)
+
+As an example, here's a fabfile defining two stand-alone tasks for deploying a
+Web application::
+
+    from fabric.api import run, roles
+
+    env.roledefs = {
+        'db': ['db1', 'db2'],
+        'web': ['web1', 'web2', 'web3'],
+    }
+
+    @roles('db')
+    def migrate():
+        # Database stuff here.
+        pass
+
+    @roles('web')
+    def update():
+        # Code updates here.
+        pass
+
+In Fabric <=1.2, the only way to ensure that ``migrate`` runs on the DB servers
+and that ``update`` runs on the Web servers (short of manual
+``env.host_string`` manipulation) was to call both as top level tasks::
+
+    $ fab migrate update
+
+Fabric >=1.3 can use `~fabric.tasks.execute` to set up a meta-task. Update the
+``import`` line like so::
+
+    from fabric.api import run, roles, execute
+
+and append this to the bottom of the file::
+
+    def deploy():
+        execute(migrate)
+        execute(update)
+
+That's all there is to it; the `~fabric.decorators.roles` decorators will be honored as expected, resulting in the following execution sequence:
+
+* `migrate` on `db1`
+* `migrate` on `db2`
+* `update` on `web1`
+* `update` on `web2`
+* `update` on `web3`
+
+.. warning::
+    This technique works because tasks that themselves have no host list (this
+    includes the global host list settings) only run one time. If used inside a
+    "regular" task that is going to run on multiple hosts, calls to
+    `~fabric.tasks.execute` will also run multiple times, resulting in
+    multiplicative numbers of subtask calls -- be careful!
+
+.. seealso:: `~fabric.tasks.execute`
+
 
 .. _failures:
 
@@ -453,6 +500,7 @@ rule, so Fabric provides ``env.warn_only``, a Boolean setting. It defaults to
 immediately. However, if ``env.warn_only`` is set to ``True`` at the time of
 failure -- with, say, the `~fabric.context_managers.settings` context
 manager -- Fabric will emit a warning message but continue executing.
+
 
 .. _connections:
 
@@ -476,7 +524,6 @@ dictionary which maps host strings to SSH connection objects.
     ``fabric.state.connections``) acts as a cache, opting to return previously
     created connections if possible in order to save some overhead, and
     creating new ones otherwise.
-
 
 Lazy connections
 ----------------

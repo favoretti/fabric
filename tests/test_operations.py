@@ -3,18 +3,21 @@ from __future__ import with_statement
 import os
 import shutil
 import sys
-import tempfile
 import types
 from contextlib import nested
 from StringIO import StringIO
 
+import unittest
+import random
+import types
+
 from nose.tools import raises, eq_
 from fudge import with_patched_object
 
-from fabric.state import env
+from fabric.state import env, output
 from fabric.operations import require, prompt, _sudo_prefix, _shell_wrap, \
     _shell_escape
-from fabric.api import get, put, hide, show, cd, lcd, local
+from fabric.api import get, put, hide, show, cd, lcd, local, run, sudo
 from fabric.sftp import SFTP
 
 from fabric.decorators import with_settings
@@ -42,29 +45,26 @@ def test_require_multiple_existing_keys():
     require('version', 'sudo_prompt')
 
 
-@mock_streams('stderr')
-@raises(SystemExit)
+@aborts
 def test_require_single_missing_key():
     """
-    When given a single non-existent key, require() raises SystemExit
+    When given a single non-existent key, require() aborts
     """
     require('blah')
 
 
-@mock_streams('stderr')
-@raises(SystemExit)
+@aborts
 def test_require_multiple_missing_keys():
     """
-    When given multiple non-existent keys, require() raises SystemExit
+    When given multiple non-existent keys, require() aborts
     """
     require('foo', 'bar')
 
 
-@mock_streams('stderr')
-@raises(SystemExit)
+@aborts
 def test_require_mixed_state_keys():
     """
-    When given mixed-state keys, require() raises SystemExit
+    When given mixed-state keys, require() aborts
     """
     require('foo', 'version')
 
@@ -82,11 +82,10 @@ def test_require_mixed_state_keys_prints_missing_only():
         assert 'foo' in err
 
 
-@mock_streams('stderr')
-@raises(SystemExit)
+@aborts
 def test_require_iterable_provided_by_key():
     """
-    When given a provided_by iterable value, require() raises SystemExit
+    When given a provided_by iterable value, require() aborts
     """
     # 'version' is one of the default values, so we know it'll be there
     def fake_providing_function():
@@ -94,11 +93,10 @@ def test_require_iterable_provided_by_key():
     require('foo', provided_by=[fake_providing_function])
 
 
-@mock_streams('stderr')
-@raises(SystemExit)
+@aborts
 def test_require_noniterable_provided_by_key():
     """
-    When given a provided_by noniterable value, require() raises SystemExit
+    When given a provided_by noniterable value, require() aborts
     """
     # 'version' is one of the default values, so we know it'll be there
     def fake_providing_function():
@@ -221,28 +219,57 @@ def test_shell_escape_escapes_backticks():
     eq_(_shell_escape(cmd), "touch test.pid && kill \`cat test.pid\`")
 
 
+class TestCombineStderr(FabricTest):
+    @server()
+    def test_local_none_global_true(self):
+        """
+        combine_stderr: no kwarg => uses global value (True)
+        """
+        output.everything = False
+        r = run("both_streams")
+        # Note: the exact way the streams are jumbled here is an implementation
+        # detail of our fake SSH server and may change in the future.
+        eq_("ssttddoeurtr", r.stdout)
+        eq_(r.stderr, "")
+
+    @server()
+    def test_local_none_global_false(self):
+        """
+        combine_stderr: no kwarg => uses global value (False)
+        """
+        output.everything = False
+        env.combine_stderr = False
+        r = run("both_streams")
+        eq_("stdout", r.stdout)
+        eq_("stderr", r.stderr)
+
+    @server()
+    def test_local_true_global_false(self):
+        """
+        combine_stderr: True kwarg => overrides global False value
+        """
+        output.everything = False
+        env.combine_stderr = False
+        r = run("both_streams", combine_stderr=True)
+        eq_("ssttddoeurtr", r.stdout)
+        eq_(r.stderr, "")
+
+    @server()
+    def test_local_false_global_true(self):
+        """
+        combine_stderr: False kwarg => overrides global True value
+        """
+        output.everything = False
+        env.combine_stderr = True
+        r = run("both_streams", combine_stderr=False)
+        eq_("stdout", r.stdout)
+        eq_("stderr", r.stderr)
+
 #
 # get() and put()
 #
 
 class TestFileTransfers(FabricTest):
-    def setup(self):
-        super(TestFileTransfers, self).setup()
-        self.tmpdir = tempfile.mkdtemp()
-
-    def teardown(self):
-        super(TestFileTransfers, self).teardown()
-        shutil.rmtree(self.tmpdir)
-
-    def path(self, *path_parts):
-        return os.path.join(self.tmpdir, *path_parts)
-
-    def exists_remotely(self, path):
-        return SFTP(env.host_string).exists(path)
-
-    def exists_locally(self, path):
-        return os.path.exists(path)
-
     #
     # get()
     #
@@ -548,10 +575,8 @@ class TestFileTransfers(FabricTest):
         put() a single file into an existing remote directory
         """
         text = "foo!"
-        local = self.path('foo.txt')
+        local = self.mkfile('foo.txt', text)
         local2 = self.path('foo2.txt')
-        with open(local, 'w') as fd:
-            fd.write(text)
         with hide('everything'):
             put(local, '/')
             get('/foo.txt', local2)

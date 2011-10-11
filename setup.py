@@ -9,12 +9,13 @@ from fabric.version import get_version
 
 readme = open('README').read()
 
+v = get_version('short')
 long_description = """
 To find out what's new in this version of Fabric, please see `the changelog
-<http://docs.fabfile.org/changes/%s.html>`_.
+<http://docs.fabfile.org/en/%s/changelog.html>`_.
 
 You can also install the `in-development version
-<https://github.com/bitprophet/fabric/tarball/master#egg=fabric-dev>`_ using
+<https://github.com/fabric/fabric/tarball/master#egg=fabric-dev>`_ using
 pip, with `pip install fabric==dev`.
 
 ----
@@ -24,7 +25,7 @@ pip, with `pip install fabric==dev`.
 ----
 
 For more information, please see the Fabric website or execute ``fab --help``.
-""" % (get_version('short'), readme)
+""" % (v, readme)
 
 setup(
     name='Fabric',
@@ -37,7 +38,7 @@ setup(
     packages=find_packages(),
     test_suite='nose.collector',
     tests_require=['nose', 'fudge'],
-    install_requires=['pycrypto >= 1.9', 'paramiko >=1.7.6'],
+    install_requires=['paramiko>=1.7.7.1'],
     entry_points={
         'console_scripts': [
             'fab = fabric.main:main',

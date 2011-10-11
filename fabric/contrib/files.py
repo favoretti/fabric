@@ -8,6 +8,7 @@ import hashlib
 import tempfile
 import re
 import os
+from StringIO import StringIO
 
 from fabric.api import *
 
@@ -49,8 +50,8 @@ def first(*args, **kwargs):
 
 
 def upload_template(filename, destination, context=None, use_jinja=False,
-    template_dir=None, use_sudo=False, backup_file=True,
-    mirror_local_mode=False, mode=None):
+    template_dir=None, use_sudo=False, backup=True, mirror_local_mode=False,
+    mode=None):
     """
     Render and upload a template text file to a remote host.
 
@@ -65,28 +66,35 @@ def upload_template(filename, destination, context=None, use_jinja=False,
     directory by default, or from ``template_dir`` if given.
 
     The resulting rendered file will be uploaded to the remote file path
-    ``destination`` (which should include the desired remote filename.) If the
-    destination file already exists, it will be renamed with a ``.bak``
-    extension. You can turn this off by ``backup_file=False``.
+    ``destination``.  If the destination file already exists, it will be
+    renamed with a ``.bak`` extension unless ``backup=False`` is specified.
 
     By default, the file will be copied to ``destination`` as the logged-in
     user; specify ``use_sudo=True`` to use `sudo` instead.
 
-    In some use cases, it is desirable to force a newly uploaded file to match
-    the mode of its local counterpart (such as when uploading executable
-    scripts). To do this, specify ``mirror_local_mode=True``.
+    The ``mirror_local_mode`` and ``mode`` kwargs are passed directly to an
+    internal `~fabric.operations.put` call; please see its documentation for
+    details on these two options.
 
-    Alternately, you may use the ``mode`` kwarg to specify an exact mode, in
-    the same vein as ``os.chmod`` or the Unix ``chmod`` command.
+    .. versionchanged:: 1.1
+        Added the ``backup``, ``mirror_local_mode`` and ``mode`` kwargs.
     """
-    basename = os.path.basename(filename)
+    func = use_sudo and sudo or run
+    # Normalize destination to be an actual filename, due to using StringIO
+    with settings(hide('everything'), warn_only=True):
+        if func('test -d %s' % destination).succeeded:
+            sep = "" if destination.endswith('/') else "/"
+            destination += sep + os.path.basename(filename)
 
-    # This temporary file should not be automatically deleted on close, as we
-    # need it there to upload it (Windows locks the file for reading while
-    # open).
-    tempfile_fd, tempfile_name = tempfile.mkstemp()
-    output = open(tempfile_name, "w+b")
-    # Init
+    # Use mode kwarg to implement mirror_local_mode, again due to using
+    # StringIO
+    if mirror_local_mode and mode is None:
+        mode = os.stat(filename).st_mode
+        # To prevent put() from trying to do this
+        # logic itself
+        mirror_local_mode = False
+
+    # Process template
     text = None
     if use_jinja:
         try:
@@ -100,34 +108,27 @@ def upload_template(filename, destination, context=None, use_jinja=False,
             text = inputfile.read()
         if context:
             text = text % context
-    output.write(text)
-    output.close()
 
-    # Back up any original file 
-    func = use_sudo and sudo or run
-    # Back up any original file (need to do figure out ultimate destination)
-    if backup_file:
-        to_backup = destination
-        with settings(hide('everything'), warn_only=True):
-            # Is destination a directory?
-            if func('test -f %s' % to_backup).failed:
-                # If so, tack on the filename to get "real" destination
-                to_backup = destination + '/' + basename
-        if exists(to_backup):
-            func("cp %s %s.bak" % (to_backup, to_backup))
+    # Back up original file
+    if backup and exists(destination):
+        func("cp %s{,.bak}" % destination)
 
-        # Upload the file.
-        put(tempfile_name, destination, use_sudo, mirror_local_mode, mode)
-        os.close(tempfile_fd)
-        os.remove(tempfile_name)
+    # Upload the file.
+    put(
+        local_path=StringIO(text),
+        remote_path=destination,
+        use_sudo=use_sudo,
+        mirror_local_mode=mirror_local_mode,
+        mode=mode
+    )
 
 
 def sed(filename, before, after, limit='', use_sudo=False, backup='.bak',
-        case_insensitive=False):
+    flags=''):
     """
     Run a search-and-replace on ``filename`` with given regex patterns.
 
-    Equivalent to ``sed -i<backup> -r -e "/<limit>/ s/<before>/<after>/g
+    Equivalent to ``sed -i<backup> -r -e "/<limit>/ s/<before>/<after>/<flags>g
     <filename>"``.
 
     For convenience, ``before`` and ``after`` will automatically escape forward
@@ -140,10 +141,13 @@ def sed(filename, before, after, limit='', use_sudo=False, backup='.bak',
     `sed` will pass ``shell=False`` to `run`/`sudo`, in order to avoid problems
     with many nested levels of quotes and backslashes.
 
-    If you would like the matches to be case insensitive, you'd only need to
-    pass the ``case_insensitive=True`` to have it tack on an 'i' to the sed
-    command. Effectively making it execute``sed -i<backup> -r -e "/<limit>/
-    s/<before>/<after>/ig <filename>"``.
+    Other options may be specified with sed-compatible regex flags -- for
+    example, to make the search and replace case insensitive, specify
+    ``flags="i"``. The ``g`` flag is always specified regardless, so you do not
+    need to remember to include it when overriding this parameter.
+
+    .. versionadded:: 1.1
+        The ``flags`` parameter.
     """
     func = use_sudo and sudo or run
     # Characters to be escaped in both
@@ -158,10 +162,6 @@ def sed(filename, before, after, limit='', use_sudo=False, backup='.bak',
         limit = r'/%s/ ' % limit
     # Test the OS because of differences between sed versions
 
-    case_bit = ''
-    if case_insensitive:
-        case_bit = 'i'
-
     with hide('running', 'stdout'):
         platform = run("uname")
     if platform in ('NetBSD', 'OpenBSD'):
@@ -172,13 +172,13 @@ def sed(filename, before, after, limit='', use_sudo=False, backup='.bak',
         tmp = "/tmp/%s" % hasher.hexdigest()
         # Use temp file to work around lack of -i
         expr = r"""cp -p %(filename)s %(tmp)s \
-&& sed -r -e '%(limit)ss/%(before)s/%(after)s/%(case_bit)sg' %(filename)s > %(tmp)s \
+&& sed -r -e '%(limit)ss/%(before)s/%(after)s/%(flags)sg' %(filename)s > %(tmp)s \
 && cp -p %(filename)s %(filename)s%(backup)s \
 && mv %(tmp)s %(filename)s"""
         command = expr % locals()
     else:
         expr = r"sed -i%s -r -e '%ss/%s/%s/%sg' %s"
-        command = expr % (backup, limit, before, after, case_bit, filename)
+        command = expr % (backup, limit, before, after, flags, filename)
     return func(command, shell=False)
 
 
@@ -282,7 +282,7 @@ def contains(filename, text, exact=False, use_sudo=False):
         return func('egrep "%s" "%s"' % (
             text.replace('"', r'\"'),
             filename.replace('"', r'\"')
-        ))
+        )).succeeded
 
 
 def append(filename, text, use_sudo=False, partial=False, escape=True):
@@ -301,7 +301,7 @@ def append(filename, text, use_sudo=False, partial=False, escape=True):
     "append lines to a file" use case. You may override this and force partial
     searching (e.g. ``^<text>``) by specifying ``partial=True``.
 
-    Because ``text`` is single-quoted, single quotes will be transparently
+    Because ``text`` is single-quoted, single quotes will be transparently 
     backslash-escaped. This can be disabled with ``escape=False``.
 
     If ``use_sudo`` is True, will use `sudo` instead of `run`.
@@ -315,29 +315,9 @@ def append(filename, text, use_sudo=False, partial=False, escape=True):
     .. versionchanged:: 1.0
         Changed default value of ``partial`` kwarg to be ``False``.
     """
-    _write_to_file(filename, text, use_sudo=use_sudo)
-
-def write(filename, text, use_sudo=False):
-    """
-    Write string (or list of strings) ``text`` to ``filename``.
-
-    This is identical to ``append()``, except that it overwrites any existing
-    file, instead of appending to it.
-    """
-    _write_to_file(filename, text, use_sudo=use_sudo, overwrite=True)
-
-def _write_to_file(filename, text, use_sudo=False, overwrite=False):
-    """
-    Append or overwrite a the string (or list of strings) ``text`` to
-    ``filename``.
-
-    This is the implementation for both ``write`` and ``append``.  Both call
-    this with the proper value for ``overwrite``.
-    """
     func = use_sudo and sudo or run
-    operator = overwrite and '>' or '>>'
     # Normalize non-list input to be a list
-    if isinstance(text, str):
+    if isinstance(text, basestring):
         text = [text]
     for line in text:
         regex = '^' + re.escape(line) + ('' if partial else '$')
@@ -345,4 +325,4 @@ def _write_to_file(filename, text, use_sudo=False, overwrite=False):
             and contains(filename, regex, use_sudo=use_sudo)):
             continue
         line = line.replace("'", r'\'') if escape else line
-        func("echo '%s' %s %s" % (line.replace("'", r'\''), operator, filename))
+        func("echo '%s' >> %s" % (line, filename))

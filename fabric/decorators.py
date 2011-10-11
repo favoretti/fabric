@@ -4,9 +4,35 @@ Convenience decorators for use in fabfiles.
 from __future__ import with_statement
 
 from functools import wraps
-from types import StringTypes
+from Crypto import Random
 
+from fabric import tasks
 from .context_managers import settings
+
+
+def task(*args, **kwargs):
+    """
+    Decorator declaring the wrapped function to be a new-style task.
+
+    May be invoked as a simple, argument-less decorator (i.e. ``@task``) or
+    with arguments customizing its behavior (e.g. ``@task(alias='myalias')``).
+
+    Please see the :ref:`new-style task <task-decorator>` documentation for
+    details on how to use this decorator.
+
+    .. versionchanged:: 1.2
+        Added the ``alias``, ``aliases``, ``task_class`` and ``default``
+        keyword arguments. See :ref:`task-decorator-arguments` for details.
+    """
+    invoked = bool(not args or kwargs)
+    task_class = kwargs.pop("task_class", tasks.WrappedCallableTask)
+    if not invoked:
+        func, args = args[0], ()
+
+    def wrapper(func):
+        return task_class(func, *args, **kwargs)
+
+    return wrapper if invoked else wrapper(func)
 
 
 def hosts(*host_list):
@@ -39,7 +65,7 @@ def hosts(*host_list):
             return func(*args, **kwargs)
         _hosts = host_list
         # Allow for single iterable argument as well as *args
-        if len(_hosts) == 1 and not isinstance(_hosts[0], StringTypes):
+        if len(_hosts) == 1 and not isinstance(_hosts[0], basestring):
             _hosts = _hosts[0]
         inner_decorator.hosts = list(_hosts)
         return inner_decorator
@@ -79,7 +105,7 @@ def roles(*role_list):
             return func(*args, **kwargs)
         _roles = role_list
         # Allow for single iterable argument as well as *args
-        if len(_roles) == 1 and not isinstance(_roles[0], StringTypes):
+        if len(_roles) == 1 and not isinstance(_roles[0], basestring):
             _roles = _roles[0]
         inner_decorator.roles = list(_roles)
         return inner_decorator
@@ -97,45 +123,64 @@ def runs_once(func):
     Any function wrapped with this decorator will silently fail to execute the
     2nd, 3rd, ..., Nth time it is called, and will return the value of the
     original run.
+
+    .. warning::
+        This decorator is not compatible with Fabric's :doc:`parallel execution
+        mode </usage/parallel>`; when used alongside
+        `~fabric.decorators.parallel` or :option:`-P`, or when decorating
+        subtasks of parallel tasks, each parallel copy of the decorated task
+        will itself run one time, resulting in multiple runs.
     """
     @wraps(func)
     def decorated(*args, **kwargs):
         if not hasattr(decorated, 'return_value'):
             decorated.return_value = func(*args, **kwargs)
         return decorated.return_value
-    return decorated
+    # Mark as serial (disables parallelism) and return
+    return serial(decorated)
 
 
-def ensure_order(sorted=False):
+def serial(func):
     """
-    Decorator preventing wrapped function from using the set() operation to
-    dedupe the host list. Instead it will force fab to iterate of the list of
-    hosts as combined from both `~fabric.decorators.hosts` and 
-    `~fabric.decorators.roles`. 
+    Forces the wrapped function to always run sequentially, never in parallel.
 
-    It also takes in a parameter sorted, to determine if this deduped list
-    should also then be sorted using the default python provided sort
-    mechanism.
+    This decorator takes precedence over the global value of :ref:`env.parallel
+    <env-parallel>`. However, if a task is decorated with both
+    `~fabric.decorators.serial` *and* `~fabric.decorators.parallel`,
+    `~fabric.decorators.parallel` wins.
 
-    Is used in conjunction with host lists and/or roles::
+    .. versionadded:: 1.3
+    """
+    if not getattr(func, 'parallel', False):
+        func.serial = True
+    return func
 
-        @ensure_order
-        @hosts('user1@host1', 'host2', 'user2@host3')
-        def my_func():
-            pass
 
+def parallel(pool_size=None):
+    """
+    Forces the wrapped function to run in parallel, instead of sequentially.
+
+    This decorator takes precedence over the global value of :ref:`env.parallel
+    <env-parallel>`. It also takes precedence over `~fabric.decorators.serial`
+    if a task is decorated with both.
+
+    .. versionadded:: 1.3
     """
     def real_decorator(func):
-        func._sorted = sorted
-        func._ensure_order = True
-        return func
+        @wraps(func)
+        def inner(*args, **kwargs):
+            # Required for Paramiko/PyCrypto to be happy in multiprocessing
+            Random.atfork()
+            return func(*args, **kwargs)
+        inner.parallel = True
+        inner.serial = False
+        inner.pool_size = pool_size
+        return inner
 
-    # Trick to allow for both a dec w/ the optional setting without have to
-    # force it to use ()
-    if type(sorted) == type(real_decorator):
-        return real_decorator(sorted)
+    # Allow non-factory-style decorator use (@decorator vs @decorator())
+    if type(pool_size) == type(real_decorator):
+        return real_decorator(pool_size)
 
-    real_decorator._ensure_order = True
     return real_decorator
 
 
@@ -144,19 +189,18 @@ def with_settings(**kw_settings):
     Decorator equivalent of ``fabric.context_managers.settings``.
 
     Allows you to wrap an entire function as if it was called inside a block
-    with the ``settings`` context manager.  Useful for retrofitting old code so
-    you don't have to change the indention to gain the behavior.
+    with the ``settings`` context manager. This may be useful if you know you
+    want a given setting applied to an entire function body, or wish to
+    retrofit old code without indenting everything.
 
-    An example use being to set all fabric api functions in a task to not error
-    out on unexpected return codes::
+    For example, to turn aborts into warnings for an entire task function::
 
         @with_settings(warn_only=True)
-        @hosts('user1@host1', 'host2', 'user2@host3')
         def foo():
-            pass
+            ...
 
-    See ``fabric.context_managers.settings`` for more information about what
-    you can do with this.
+    .. seealso:: `~fabric.context_managers.settings`
+    .. versionadded:: 1.1
     """
     def outer(func):
         def inner(*args, **kwargs):
@@ -164,4 +208,3 @@ def with_settings(**kw_settings):
                 return func(*args, **kwargs)
         return inner
     return outer
-

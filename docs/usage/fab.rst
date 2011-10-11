@@ -90,6 +90,13 @@ below.
 
     .. versionadded:: 0.9.1
 
+.. cmdoption:: --abort-on-prompts
+
+    Sets :ref:`env.abort_on_prompts <abort-on-prompts>` to ``True``, forcing
+    Fabric to abort whenever it would prompt for input.
+
+    .. versionadded:: 1.1
+
 .. cmdoption:: -c RCFILE, --config=RCFILE
 
     Sets :ref:`env.rcfile <rcfile>` to the given file path, which Fabric will
@@ -113,7 +120,17 @@ below.
     alternately an explicit file path to load as the fabfile (e.g.
     ``/path/to/my/fabfile.py``.)
 
-.. seealso:: :doc:`fabfiles`
+    .. seealso:: :doc:`fabfiles`
+
+.. cmdoption:: -F LIST_FORMAT, --list-format=LIST_FORMAT
+
+    Allows control over the output format of :option:`--list <-l>`. ``short`` is
+    equivalent to :option:`--shortlist`, ``normal`` is the same as simply
+    omitting this option entirely (i.e. the default), and ``nested`` prints out
+    a nested namespace tree.
+
+    .. versionadded:: 1.1
+    .. seealso:: :option:`--shortlist`, :option:`--list <-l>`
 
 .. cmdoption:: -h, --help
 
@@ -133,8 +150,8 @@ below.
 
 .. cmdoption:: -x HOSTS, --exclude-hosts=HOSTS
 
-    Sets :ref:`env.exclude_hosts` to the given comma-delimited list of host
-    strings to then keep out of the final host list.
+    Sets :ref:`env.exclude_hosts <exclude-hosts>` to the given comma-delimited
+    list of host strings to then keep out of the final host list.
 
     .. versionadded:: 1.1
 
@@ -151,6 +168,12 @@ below.
 
     .. versionadded:: 0.9.1
 
+.. cmdoption:: --keepalive=KEEPALIVE
+
+    Sets :ref:`env.keepalive <keepalive>` to the given (integer) value, specifying an SSH keepalive interval.
+
+    .. versionadded:: 1.1
+
 .. cmdoption:: -l, --list
 
     Imports a fabfile as normal, but then prints a list of all discovered tasks
@@ -159,13 +182,21 @@ below.
 
     .. versionchanged:: 0.9.1
         Added docstring to output.
-    .. seealso:: :option:`--shortlist`
+    .. seealso:: :option:`--shortlist`, :option:`--list-format <-F>`
 
 .. cmdoption:: -p PASSWORD, --password=PASSWORD
 
     Sets :ref:`env.password <password>` to the given string; it will then be
     used as the default password when making SSH connections or calling the
     ``sudo`` program.
+
+.. cmdoption:: -P, --parallel
+
+    Sets :ref:`env.parallel <env-parallel>` to ``True``, causing
+    tasks to run in parallel.
+
+    .. versionadded:: 1.3
+    .. seealso:: :doc:`/usage/parallel`
 
 .. cmdoption:: --no-pty
 
@@ -219,6 +250,14 @@ below.
 
     Sets :ref:`env.warn_only <warn_only>` to ``True``, causing Fabric to
     continue execution even when commands encounter error conditions.
+
+.. cmdoption:: -z, --pool-size
+
+    Sets :ref:`env.pool_size <pool-size>`, which specifies how many processes
+    to run concurrently during parallel execution.
+
+    .. versionadded:: 1.3
+    .. seealso:: :doc:`/usage/parallel`
 
 
 .. _task-arguments:

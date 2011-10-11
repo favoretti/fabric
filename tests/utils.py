@@ -2,27 +2,33 @@ from __future__ import with_statement
 
 from StringIO import StringIO  # No need for cStringIO at this time
 from contextlib import contextmanager
+from copy import deepcopy
 from fudge.patcher import with_patched_object
 from functools import wraps, partial
 from types import StringTypes
 import copy
 import getpass
+import os
 import re
+import shutil
 import sys
+import tempfile
 
 from fudge import Fake, patched_context, clear_expectations
+from nose.tools import raises
 
 from fabric.context_managers import settings
-from fabric.network import interpret_host_string
 from fabric.state import env, output
+from fabric.sftp import SFTP
 import fabric.network
+from fabric.network import normalize, to_dict
 
 from server import PORT, PASSWORDS, USER, HOST
 
 
 class FabricTest(object):
     """
-    Nose-oriented test runner class that wipes env after every test.
+    Nose-oriented test runner which wipes state.env and provides file helpers.
     """
     def setup(self):
         # Clear Fudge mock expectations
@@ -34,15 +40,35 @@ class FabricTest(object):
         self.previous_output = output.items()
         # Set up default networking for test server
         env.disable_known_hosts = True
-        interpret_host_string('%s@%s:%s' % (USER, HOST, PORT))
+        env.update(to_dict('%s@%s:%s' % (USER, HOST, PORT)))
         env.password = PASSWORDS[USER]
         # Command response mocking is easier without having to account for
         # shell wrapping everywhere.
         env.use_shell = False
+        # Temporary local file dir
+        self.tmpdir = tempfile.mkdtemp()
 
     def teardown(self):
         env.update(self.previous_env)
         output.update(self.previous_output)
+        shutil.rmtree(self.tmpdir)
+        # Clear Fudge mock expectations...again
+        clear_expectations()
+
+    def path(self, *path_parts):
+        return os.path.join(self.tmpdir, *path_parts)
+
+    def mkfile(self, path, contents):
+        dest = self.path(path)
+        with open(dest, 'w') as fd:
+            fd.write(contents)
+        return dest
+
+    def exists_remotely(self, path):
+        return SFTP(env.host_string).exists(path)
+
+    def exists_locally(self, path):
+        return os.path.exists(path)
 
 
 class CarbonCopy(StringIO):
@@ -185,26 +211,31 @@ def line_prefix(prefix, string):
     return "\n".join(prefix + x for x in string.splitlines())
 
 
-def eq_(a, b, msg=None):
+def eq_(result, expected, msg=None):
     """
     Shadow of the Nose builtin which presents easier to read multiline output.
     """
-    default_msg = """
-Expected:
-%s
-
-Got:
-%s
+    params = {'expected': expected, 'result': result}
+    aka = """
 
 --------------------------------- aka -----------------------------------------
 
 Expected:
-%r
+%(expected)r
 
 Got:
-%r
-""" % (a, b, a, b)
-    assert a == b, msg or default_msg
+%(result)r
+""" % params
+    default_msg = """
+Expected:
+%(expected)s
+
+Got:
+%(result)s
+""" % params
+    if (repr(result) != str(result)) or (repr(expected) != str(expected)):
+        default_msg += aka
+    assert result == expected, msg or default_msg
 
 
 def eq_contents(path, text):
@@ -212,42 +243,35 @@ def eq_contents(path, text):
         eq_(text, fd.read())
 
 
-class with_patched_state_env(object):
-    """Decorate a unit test to provide a default state.env
-
-    Grabs the fabric.state.env attribute dictionary.
-
-    e.g.
-    @with_patched_state_env({'hosts': ('foo', 'bar')})
-    def test_something_with_hosts():
-
+def patched_env(updates):
     """
-    def __init__(self, dict_overrides):
-        """ Pass in a dict of keys to override the default env with
+    Execute a function with a patched copy of ``fabric.state.env``.
 
-        :param dict_overrides: Dictionary of keys to override in default_env
+    ``fabric.state.env`` is patched during the wrapped functions' run, with an
+    equivalent copy that has been ``update``d with the given ``updates``.
 
-        """
-        from fabric.state import env as default_env
-        self.env = self._merge_env(default_env.copy(), dict_overrides)
+    E.g. with ``fabric.state.env = {'foo': 'bar', 'biz': 'baz'}``, a function
+    decorated with ``@patched_env({'foo': 'notbar'})`` would see
+    ``fabric.state.env`` as equal to ``{'biz': 'baz', 'foo': 'notbar'}``.
+    """
+    from fabric.state import env
+    def wrapper(func):
+        new_env = deepcopy(env).update(updates)
+        return with_patched_object('fabric.state', 'env', new_env)
+    return wrapper
 
-    def _merge_env(self, default, overrides):
-        """for item in the overrides, set them over the default"""
-        for key, val in overrides.iteritems():
-            default[key] = val
 
-        return default
+def fabfile(name):
+    return os.path.join(os.path.dirname(__file__), 'support', name)
 
-    def __call__(self, f):
-        """This wraps a function with a fudge mock that implements the default
-        state.env
-        """
-        env = self.env
 
-        def wrapped_f(env=env, *args):
-            f(*args)
+@contextmanager
+def path_prefix(module):
+    i = 0
+    sys.path.insert(i, os.path.dirname(module))
+    yield
+    sys.path.pop(i)
 
-        # now add the fudge decorator here
-        patcher = with_patched_object('fabric.state', 'env', env)
-        wrapped_f = patcher(wrapped_f)
-        return wrapped_f
+
+def aborts(func):
+    return raises(SystemExit)(mock_streams('stderr')(func))
