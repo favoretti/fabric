@@ -1,9 +1,10 @@
 #!/usr/bin/python
-# EASY-INSTALL-ENTRY-SCRIPT: 'Fabric==1.0.0','console_scripts','fab'
-__requires__ = 'Fabric==1.0.0'
+# EASY-INSTALL-ENTRY-SCRIPT: 'Fabric==1.3a.-665524e-','console_scripts','fab'
+__requires__ = 'Fabric==1.3a.-665524e-'
 import sys
 from pkg_resources import load_entry_point
 
-sys.exit(
-   load_entry_point('Fabric==1.0.0', 'console_scripts', 'fab')()
-)
+if __name__ == '__main__':
+    sys.exit(
+        load_entry_point('Fabric==1.3a.-665524e-', 'console_scripts', 'fab')()
+    )

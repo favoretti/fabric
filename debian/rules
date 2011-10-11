@@ -3,9 +3,5 @@
 %:
 	dh $@
 
-override_dh_auto_clean:
-	rm -rf paramiko/
-	dh_auto_clean
-
 override_dh_installchangelogs:
 	dh_installchangelogs --exclude=changes

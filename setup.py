@@ -38,7 +38,7 @@ setup(
     packages=find_packages(),
     test_suite='nose.collector',
     tests_require=['nose', 'fudge'],
-    install_requires=['paramiko>=1.7.7.1'],
+    install_requires=['paramiko>=1.7.6'],
     entry_points={
         'console_scripts': [
             'fab = fabric.main:main',
