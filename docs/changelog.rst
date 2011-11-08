@@ -25,6 +25,22 @@ would have also been included in the 1.2 line.
 Changelog
 =========
 
+* :release:`1.3.1 <2011-10-24>`
+* :bug:`457` Ensured that Fabric fast-fails parallel tasks if any child
+  processes encountered errors. Previously, multi-task invocations would
+  continue to the 2nd, etc task when failures occurred, which does not fit with
+  how Fabric usually behaves. Thanks to Github user ``sdcooke`` for the report
+  and Morgan Goose for the fix.
+* :release:`1.3.0 <2011-10-23>`
+* :release:`1.2.3 <2011-10-23>`
+* :release:`1.1.5 <2011-10-23>`
+* :release:`1.0.5 <2011-10-23>`
+* :support:`275` To support an edge use case of the features released in
+  :issue:`19`, and to lay the foundation for :issue:`275`, we have forked
+  Paramiko into the `Python 'ssh' library <http://pypi.python.org/pypi/ssh/>`_
+  and changed our dependency to it for Fabric 1.3 and higher. This may have
+  implications for the more uncommon install use cases, and package
+  maintainers, but we hope to iron out any issues as they come up.
 * :bug:`323` `~fabric.operations.put` forgot how to expand leading tildes in
   the remote file path. This has been corrected. Thanks to Piet Delport for the
   catch.

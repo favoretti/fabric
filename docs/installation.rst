@@ -18,8 +18,8 @@ In order for Fabric's installation to succeed, you will need four primary pieces
 
 * the Python programming language;
 * the ``setuptools`` packaging/installation library;
-* the PyCrypto cryptography library;
-* and the Paramiko SSH2 library.
+* the Python ``ssh`` SSH2 library;
+* and ``ssh``'s dependency, the PyCrypto cryptography library.
 
 and, if using the :doc:`parallel execution mode </usage/parallel>`:
 
@@ -59,11 +59,11 @@ setuptools dependency in the future, or include alternative support for the
 PyCrypto
 --------
 
-`PyCrypto <http://www.amk.ca/python/code/crypto.html>`_ is a dependency of
-Paramiko which provides the low-level (C-based) encryption algorithms used to
-run SSH. There are a couple gotchas associated with installing PyCrypto: its
-compatibility with Python's package tools, and the fact that it is a C-based
-extension.
+`PyCrypto <http://www.amk.ca/python/code/crypto.html>`_  provides the low-level
+(C-based) encryption algorithms used to run SSH, and is thus required by our
+SSH library. There are a couple gotchas associated with installing PyCrypto:
+its compatibility with Python's package tools, and the fact that it is a
+C-based extension.
 
 .. _pycrypto-and-pip:
 
@@ -76,7 +76,7 @@ specific versions of Python, ``pip`` and PyCrypto can prevent installation of
 PyCrypto. Specifically:
 
 * Python = 2.5.x
-* PyCrypto >= 2.1
+* PyCrypto >= 2.1 (which is required to run Fabric >= 1.3)
 * ``pip`` < 0.8.1
 
 When all three criteria are met, you may encounter ``No such file or
@@ -87,10 +87,10 @@ The fix is simply to make sure at least one of the above criteria is not met,
 by doing the following (in order of preference):
 
 * Upgrade to ``pip`` 0.8.1 or above, e.g. by running ``pip install -U pip``.
-* Explicitly install PyCrypto 2.0.1 (which is the latest version known to work with
-  Fabric which does not cause the installation problem) via ``pip install
-  PyCrypto==2.0.1``.
 * Upgrade to Python 2.6 or above.
+* Downgrade to Fabric 1.2.x, which does not require PyCrypto >= 2.1, and
+  install PyCrypto 2.0.1 (the oldest version on PyPI which works with Fabric
+  1.2.)
 
 
 C extension
@@ -135,6 +135,9 @@ you'll need to install it manually; the recommended route, as usual, is via
     If you encounter this problem, either use :ref:`env.pool_size / -z
     <pool-size>` to limit the amount of concurrency, or upgrade to Python
     >=2.6.3.
+    
+    Python 2.5 is unaffected, as it requires the PyPI version of
+    ``multiprocessing``, which is newer than that shipped with Python <2.6.3.
 
 Development dependencies
 ------------------------
@@ -221,16 +224,16 @@ Windows users who already have ActiveState's `ActivePython
 <http://www.activestate.com/activepython/downloads>`_ distribution installed
 may find Fabric is best installed with `its package manager, PyPM
 <http://code.activestate.com/pypm/>`_. Below is example output from an
-installation of Fabric 0.9.4 via ``pypm``::
+installation of Fabric via ``pypm``::
 
     C:\> pypm install fabric
     The following packages will be installed into "%APPDATA%\Python" (2.7):
-     paramiko-1.7.6 pycrypto-2.0.1 fabric-0.9.4
-    Get: [pypm-free.activestate.com] fabric 0.9.4
-    Get: [pypm-free.activestate.com] paramiko 1.7.6
-    Get: [pypm-free.activestate.com] pycrypto 2.0.1
-    Installing paramiko-1.7.6
-    Installing pycrypto-2.0.1
-    Installing fabric-0.9.4
+     ssh-1.7.8 pycrypto-2.4 fabric-1.3.0
+    Get: [pypm-free.activestate.com] fabric 1.3.0
+    Get: [pypm-free.activestate.com] ssh 1.7.8
+    Get: [pypm-free.activestate.com] pycrypto 2.4
+    Installing ssh-1.7.8
+    Installing pycrypto-2.4
+    Installing fabric-1.3.0
     Fixing script %APPDATA%\Python\Scripts\fab-script.py
     C:\>

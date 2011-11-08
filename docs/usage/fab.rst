@@ -85,8 +85,8 @@ below.
 
 .. cmdoption:: -a
 
-    Sets :ref:`env.no_agent <no_agent>` to ``True``, forcing Paramiko not to
-    talk to the SSH agent when trying to unlock private key files.
+    Sets :ref:`env.no_agent <no_agent>` to ``True``, forcing our SSH layer not
+    to talk to the SSH agent when trying to unlock private key files.
 
     .. versionadded:: 0.9.1
 
@@ -163,8 +163,8 @@ below.
 
 .. cmdoption:: -k
 
-    Sets :ref:`env.no_keys <no_keys>` to ``True``, forcing Paramiko to not look
-    for SSH private key files in one's home directory.
+    Sets :ref:`env.no_keys <no_keys>` to ``True``, forcing the SSH layer to not
+    look for SSH private key files in one's home directory.
 
     .. versionadded:: 0.9.1
 
@@ -173,6 +173,12 @@ below.
     Sets :ref:`env.keepalive <keepalive>` to the given (integer) value, specifying an SSH keepalive interval.
 
     .. versionadded:: 1.1
+
+.. cmdoption:: --linewise
+
+    Forces output to be buffered line-by-line instead of byte-by-byte. Often useful or required for :ref:`parallel execution <linewise-output>`.
+
+    .. versionadded:: 1.3
 
 .. cmdoption:: -l, --list
 

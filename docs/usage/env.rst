@@ -286,6 +286,21 @@ set/appended to with :option:`-i`.
 
 .. seealso:: `Paramiko's documentation for SSHClient.connect() <http://www.lag.net/paramiko/docs/paramiko.SSHClient-class.html#connect>`_
 
+.. _env-linewise:
+
+``linewise``
+------------
+
+**Default:** ``False``
+
+Forces buffering by line instead of by character/byte, typically when running
+in parallel mode. May be activated via :option:`--linewise`.
+
+.. seealso:: :ref:`linewise-output`
+
+.. versionadded:: 1.3
+
+
 .. _local-user:
 
 ``local_user``
@@ -303,8 +318,8 @@ contain the same value.
 
 **Default:** ``False``
 
-If ``True``, will tell Paramiko not to seek out running SSH agents when using
-key-based authentication.
+If ``True``, will tell the SSH layer not to seek out running SSH agents when
+using key-based authentication.
 
 .. versionadded:: 0.9.1
 
@@ -315,9 +330,9 @@ key-based authentication.
 
 **Default:** ``False``
 
-If ``True``, will tell Paramiko not to load any private key files from one's
-``$HOME/.ssh/`` folder. (Key files explicitly loaded via ``fab -i`` will still
-be used, of course.)
+If ``True``, will tell the SSH layer not to load any private key files from
+one's ``$HOME/.ssh/`` folder. (Key files explicitly loaded via ``fab -i`` will
+still be used, of course.)
 
 .. versionadded:: 0.9.1
 
