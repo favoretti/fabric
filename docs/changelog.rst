@@ -25,6 +25,13 @@ would have also been included in the 1.2 line.
 Changelog
 =========
 
+* :release:`1.3.2 <2011-11-07>`
+* :release:`1.2.4 <2011-11-07>`
+* :release:`1.1.6 <2011-11-07>`
+* :support:`459` Update our `setup.py` files to note that PyCrypto released
+  2.4.1, which fixes the setuptools problems.
+* :support:`467` (also :issue:`468`, :issue:`469`) Handful of documentation
+  clarification tweaks. Thanks to Paul Hoffman for the patches.
 * :release:`1.3.1 <2011-10-24>`
 * :bug:`457` Ensured that Fabric fast-fails parallel tasks if any child
   processes encountered errors. Previously, multi-task invocations would
