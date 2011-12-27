@@ -9,7 +9,7 @@ Homepage: http://fabfile.org/
 
 Package: fabric
 Architecture: all
-Depends: ${misc:Depends}, ${python:Depends}, python-paramiko (>= 1.6), python-pkg-resources
+Depends: ${misc:Depends}, ${python:Depends}, python-pkg-resources, python-ssh
 Description: Simple Pythonic remote deployment tool
  Fabric is designed to upload files and run shell commands on a number of
  servers in parallel or serially. These commands are grouped in tasks (which

@@ -1,9 +1,9 @@
 Package: fabric
-Version: 1.3a
+Version: 1.4a
 Architecture: all
 Maintainer: Vladimir Lazarenko <vladimir@vlfn.nl>
-Installed-Size: 344
-Depends: python (>= 2.5), python-support (>= 0.90.0), python-paramiko (>= 1.6), python-pkg-resources
+Installed-Size: 376
+Depends: python (>= 2.5), python-support (>= 0.90.0), python-pkg-resources, python-ssh
 Section: net
 Priority: optional
 Homepage: http://fabfile.org/
