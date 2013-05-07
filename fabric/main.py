@@ -8,9 +8,8 @@ fabfile, and executing the commands given.
 The other callables defined in this module are internal only. Anything useful
 to individuals leveraging Fabric as a library, should be kept elsewhere.
 """
-
-from collections import defaultdict
-from operator import add, isMappingType
+import getpass
+from operator import isMappingType
 from optparse import OptionParser
 import os
 import sys
@@ -20,11 +19,12 @@ import types
 from fabric import api, state, colors
 from fabric.contrib import console, files, project
 
-from fabric.network import denormalize, disconnect_all, ssh
+from fabric.network import disconnect_all, ssh
 from fabric.state import env_options
 from fabric.tasks import Task, execute
 from fabric.task_utils import _Dict, crawl
-from fabric.utils import abort, indent
+from fabric.utils import abort, indent, warn, _pty_size
+
 
 # One-time calculation of "all internal callables" to avoid doing this on every
 # check of a given fabfile callable (in is_classic_task()).
@@ -33,6 +33,7 @@ _internals = reduce(lambda x, y: x + filter(callable, vars(y).values()),
     _modules,
     []
 )
+
 
 # Module recursion cache
 class _ModuleCache(object):
@@ -79,14 +80,15 @@ def _is_package(path):
     )
 
 
-def find_fabfile():
+def find_fabfile(names=None):
     """
     Attempt to locate a fabfile, either explicitly or by searching parent dirs.
 
     Usage docs are in docs/usage/fabfiles.rst, in "Fabfile discovery."
     """
-    # Obtain env value
-    names = [state.env.fabfile]
+    # Obtain env value if not given specifically
+    if names is None:
+        names = [state.env.fabfile]
     # Create .py version if necessary
     if not names[0].endswith('.py'):
         names += [names[0] + '.py']
@@ -208,8 +210,12 @@ def extract_tasks(imported_vars):
         name, obj = tup
         if is_task_object(obj):
             state.env.new_style_tasks = True
-            # Honor instance.name
-            new_style_tasks[obj.name] = obj
+            # Use instance.name if defined
+            if obj.name and obj.name != 'undefined':
+                new_style_tasks[obj.name] = obj
+            else:
+                obj.name = name
+                new_style_tasks[name] = obj
             # Handle aliasing
             if obj.aliases is not None:
                 for alias in obj.aliases:
@@ -236,7 +242,7 @@ def is_task_module(a):
     """
     #return (type(a) is types.ModuleType and
     #        any(map(is_task_object, vars(a).values())))
-    if type(a) is types.ModuleType and a not in _seen:
+    if isinstance(a, types.ModuleType) and a not in _seen:
         # Flag module as seen
         _seen.add(a)
         # Signal that we need to check it out
@@ -263,7 +269,9 @@ def parse_options():
     # Initialize
     #
 
-    parser = OptionParser(usage="fab [options] <command>[:arg1,arg2=val2,host=foo,hosts='h1;h2',...] ...")
+    parser = OptionParser(
+        usage=("fab [options] <command>"
+               "[:arg1,arg2=val2,host=foo,hosts='h1;h2',...] ..."))
 
     #
     # Define options that don't become `env` vars (typically ones which cause
@@ -284,6 +292,12 @@ def parse_options():
         default='normal',
         metavar='FORMAT',
         help="formats --list, choices: %s" % ", ".join(LIST_FORMAT_OPTIONS)
+    )
+
+    parser.add_option('-I', '--initial-password-prompt',
+        action='store_true',
+        default=False,
+        help="Force password prompt up-front"
     )
 
     # List Fab commands found in loaded fabfiles/source files
@@ -334,11 +348,13 @@ def parse_options():
     opts, args = parser.parse_args()
     return parser, opts, args
 
+
 def _is_task(name, value):
     """
     Is the object a task as opposed to e.g. a dict or int?
     """
     return is_classic_task((name, value)) or is_task_object(value)
+
 
 def _sift_tasks(mapping):
     tasks, collections = [], []
@@ -350,6 +366,7 @@ def _sift_tasks(mapping):
     tasks = sorted(tasks)
     collections = sorted(collections)
     return tasks, collections
+
 
 def _task_names(mapping):
     """
@@ -372,7 +389,7 @@ def _print_docstring(docstrings, name):
     if not docstrings:
         return False
     docstring = crawl(name, state.commands).__doc__
-    if type(docstring) in types.StringTypes:
+    if isinstance(docstring, basestring):
         return docstring
 
 
@@ -383,6 +400,7 @@ def _normal_list(docstrings=True):
     max_len = reduce(lambda a, b: max(a, len(b)), task_names, 0)
     sep = '  '
     trail = '...'
+    max_width = _pty_size()[1] - 1 - len(trail)
     for name in task_names:
         output = None
         docstring = _print_docstring(docstrings, name)
@@ -390,7 +408,7 @@ def _normal_list(docstrings=True):
             lines = filter(None, docstring.splitlines())
             first_line = lines[0].strip()
             # Truncate it if it's longer than N chars
-            size = 75 - (max_len + len(sep) + len(trail))
+            size = max_width - (max_len + len(sep) + len(trail))
             if len(first_line) > size:
                 first_line = first_line[:size] + trail
             output = name.ljust(max_len) + sep + first_line
@@ -416,6 +434,7 @@ def _nested_list(mapping, level=1):
 
 COMMANDS_HEADER = "Available commands"
 NESTED_REMINDER = " (remember to call as module.[...].task)"
+
 
 def list_commands(docstring, format_):
     """
@@ -557,10 +576,12 @@ def update_output_levels(show, hide):
             state.output[key] = False
 
 
-from fabric.tasks import _parallel_tasks
+def show_commands(docstring, format, code=0):
+    print("\n".join(list_commands(docstring, format)))
+    sys.exit(code)
 
 
-def main():
+def main(fabfile_locations=None):
     """
     Main command-line execution loop.
     """
@@ -600,20 +621,23 @@ def main():
             if key in state.env and isinstance(state.env[key], basestring):
                 state.env[key] = state.env[key].split(',')
 
+        # Feed the env.tasks : tasks that are asked to be executed.
+        state.env['tasks'] = arguments
+
         # Handle output control level show/hide
         update_output_levels(show=options.show, hide=options.hide)
 
         # Handle version number option
         if options.show_version:
             print("Fabric %s" % state.env.version)
-            print("ssh (library) %s" % ssh.__version__)
+            print("Paramiko %s" % ssh.__version__)
             sys.exit(0)
 
         # Load settings from user settings file, into shared env dict.
         state.env.update(load_settings(state.env.rcfile))
 
         # Find local fabfile path or abort
-        fabfile = find_fabfile()
+        fabfile = find_fabfile(fabfile_locations)
         if not fabfile and not remainder_arguments:
             abort("""Couldn't find any fabfiles!
 
@@ -657,8 +681,7 @@ Remember that -f can be used to specify fabfile path, and use -h for help.""")
 
         # List available commands
         if options.list_commands:
-            print("\n".join(list_commands(docstring, options.list_format)))
-            sys.exit(0)
+            show_commands(docstring, options.list_format)
 
         # Handle show (command-specific help) option
         if options.display:
@@ -683,8 +706,9 @@ Remember that -f can be used to specify fabfile path, and use -h for help.""")
 
         # Abort if any unknown commands were specified
         if unknown_commands:
-            abort("Command(s) not found:\n%s" \
+            warn("Command(s) not found:\n%s" \
                 % indent(unknown_commands))
+            show_commands(None, options.list_format, 1)
 
         # Generate remainder command and insert into commands, commands_to_run
         if remainder_command:
@@ -695,6 +719,11 @@ Remember that -f can be used to specify fabfile path, and use -h for help.""")
         # Ditto for a default, if found
         if not commands_to_run and default:
             commands_to_run.append((default.name, [], {}, [], [], []))
+
+        # Initial password prompt, if requested
+        if options.initial_password_prompt:
+            prompt = "Initial value for env.password: "
+            state.env.password = getpass.getpass(prompt)
 
         if state.output.debug:
             names = ", ".join(x[0] for x in commands_to_run)
@@ -717,7 +746,7 @@ Remember that -f can be used to specify fabfile path, and use -h for help.""")
         raise
     except KeyboardInterrupt:
         if state.output.status:
-            print >> sys.stderr, "\nStopped."
+            sys.stderr.write("\nStopped.\n")
         sys.exit(1)
     except:
         sys.excepthook(*sys.exc_info())

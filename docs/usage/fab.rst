@@ -149,6 +149,12 @@ below.
     .. versionadded:: 1.1
     .. seealso:: :option:`--shortlist`, :option:`--list <-l>`
 
+.. cmdoption:: -g HOST, --gateway=HOST
+
+    Sets :ref:`env.gateway <gateway>` to ``HOST`` host string.
+
+    .. versionadded:: 1.5
+
 .. cmdoption:: -h, --help
 
     Displays a standard help message, with all possible options and a brief
@@ -177,6 +183,23 @@ below.
     When set to a file path, will load the given file as an SSH identity file
     (usually a private key.) This option may be repeated multiple times. Sets
     (or appends to) :ref:`env.key_filename <key-filename>`.
+
+.. cmdoption:: -I, --initial-password-prompt
+
+    Forces a password prompt at the start of the session (after fabfile load
+    and option parsing, but before executing any tasks) in order to pre-fill
+    :ref:`env.password <password>`.
+
+    This is useful for fire-and-forget runs (especially parallel sessions, in
+    which runtime input is not possible) when setting the password via
+    :option:`--password <-p>` or by setting :ref:`env.password <password>` in
+    your fabfile, is undesirable.
+
+    .. note:: The value entered into this prompt will *overwrite* anything
+      supplied via :ref:`env.password <password>` at module level, or via
+      :option:`--password <-p>`.
+
+    .. seealso:: :ref:`password-management`
 
 .. cmdoption:: -k
 
@@ -212,6 +235,8 @@ below.
     Sets :ref:`env.password <password>` to the given string; it will then be
     used as the default password when making SSH connections or calling the
     ``sudo`` program.
+
+    .. seealso:: :option:`--initial-password-prompt <-I>`
 
 .. cmdoption:: -P, --parallel
 
@@ -303,6 +328,15 @@ below.
         :ref:`env.timeout <timeout>`,
         :ref:`env.connection_attempts <connection-attempts>`
     .. versionadded:: 1.4
+
+.. cmdoption:: --command-timeout=N, -T N
+
+   Set remote command timeout in seconds. Sets
+   :ref:`env.command_timeout <command-timeout>`.
+
+   .. seealso::
+	:ref:`env.command_timeout <command-timeout>`,
+    .. versionadded:: 1.6
 
 .. cmdoption:: -u USER, --user=USER
 

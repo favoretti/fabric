@@ -6,9 +6,10 @@ from __future__ import with_statement
 
 import nose
 
-from fabric.api import *
+from fabric.api import abort, local, task
 
-import docs, tag
+import docs
+import tag
 from utils import msg
 
 
@@ -21,10 +22,7 @@ def test(args=None):
     """
     default_args = "-sv --with-doctest --nologcapture --with-color"
     default_args += (" " + args) if args else ""
-    try:
-        nose.core.run(argv=[''] + default_args.split())
-    except SystemExit:
-        abort("Nose encountered an error; you may be missing newly added test dependencies. Try running 'pip install -r requirements.txt'.")
+    nose.core.run_exit(argv=[''] + default_args.split())
 
 
 @task
